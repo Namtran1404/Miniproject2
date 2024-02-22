@@ -5,17 +5,20 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.Pair;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -43,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recyclerView);
         titles = new ArrayList<>();
         guids = new ArrayList<>();
-        adapter = new TitleAdapter();
+        adapter = new TitleAdapter(this, titles,guids);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -60,34 +63,46 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    private class TitleAdapter extends RecyclerView.Adapter<TitleAdapter.TitleViewHolder> {
-        @Override
-        public void onBindViewHolder(@NonNull TitleViewHolder holder, int position, @NonNull List<Object> payloads) {
-            String title = titles.get(position);
-            String guid = guids.get(position); // Giả sử bạn có một danh sách guids
+    public class TitleAdapter extends RecyclerView.Adapter<TitleAdapter.TitleViewHolder> {
+        private List<String> titles;
+        private Context context;
+        private List<String> guids;
 
-            // Giới hạn độ dài của tiêu đề
-            int maxLength = 20; // Đặt chiều dài tối đa bạn muốn
-            if (title.length() > maxLength) {
-                title = title.substring(0, maxLength) + "...";
-            }
-
-            holder.textView.setText(title);
-            holder.openButton.setTag(guid); // Gán giá trị của guid vào tag của nút Button
+        public TitleAdapter(Context context, List<String> titles, List<String> guids) {
+            this.context = context;
+            this.titles = titles;
+            this.guids = guids; // Gán danh sách guids
         }
 
         @NonNull
         @Override
         public TitleViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = LayoutInflater.from(parent.getContext()).inflate(android.R.layout.simple_list_item_1, parent, false);
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.recycler_view_item, parent, false);
             return new TitleViewHolder(view);
         }
-
 
         @Override
         public void onBindViewHolder(@NonNull TitleViewHolder holder, int position) {
             String title = titles.get(position);
+            int maxLength = 40; // Đặt chiều dài tối đa bạn muốn
+            if (title.length() > maxLength) {
+                title = title.substring(0, maxLength) + "...";
+            }
             holder.textView.setText(title);
+            // Sử dụng guids.get(position) để lấy guid tương ứng
+            String guid = guids.get(position);
+            holder.button.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // Xử lý sự kiện khi nút Button được nhấn
+                    openBrowser(guid); // Gọi phương thức mở trình duyệt với guid tương ứng
+                }
+            });
+        }
+        private void openBrowser(String guid) {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setData(Uri.parse(guid));
+            startActivity(i);
         }
 
         @Override
@@ -96,56 +111,50 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        class TitleViewHolder extends RecyclerView.ViewHolder {
+        public class TitleViewHolder extends RecyclerView.ViewHolder {
             TextView textView;
-            Button openButton;
+            Button button;
 
             public TitleViewHolder(@NonNull View itemView) {
                 super(itemView);
-                textView = itemView.findViewById(android.R.id.text1);
-                openButton = itemView.findViewById(android.R.id.button1);
-
-                // Thiết lập sự kiện click cho nút Button
-                openButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        String guid = (String) v.getTag(); // Lấy giá trị của guid từ tag của nút Button
-                        // Mở trình duyệt với URL tương ứng
-                        if (guid != null && !guid.isEmpty()) {
-                            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(guid));
-                            startActivity(browserIntent);
-                        }
-                    }
-                });
+                textView = itemView.findViewById(R.id.textView);
+                button = itemView.findViewById(R.id.button);
             }
         }
     }
-    private class DownloadTask extends AsyncTask<String, Void, List<String>> {
+    private class DownloadTask extends AsyncTask<String, Void, List<Pair<String, String>>> {
 
         @Override
-        protected List<String> doInBackground(String... urls) {
-            List<String> titles = new ArrayList<>();
+        protected List<Pair<String, String>> doInBackground(String... urls) {
+            List<Pair<String, String>> titleGuidPairs = new ArrayList<>();
             try {
                 // Kết nối tới URL và lấy HTML
                 Document doc = Jsoup.connect(urls[0]).get();
-                // Trích xuất tiêu đề từ các thẻ <title>
-                Elements elements = doc.select("title");
-                for (Element element : elements) {
-                    // Thêm tiêu đề vào danh sách
-                    titles.add(element.text());
+                // Trích xuất tiêu đề và guid từ các mục trong tài liệu RSS
+                Elements items = doc.select("item");
+                for (Element item : items) {
+                    String title = item.select("title").first().text();
+                    String guid = item.select("guid").first().text();
+                    // Thêm cặp tiêu đề và guid vào danh sách
+                    titleGuidPairs.add(new Pair<>(title, guid));
                 }
             } catch (IOException e) {
                 Log.e("DownloadTask", "Error downloading RSS", e);
             }
-            return titles;
+            return titleGuidPairs;
         }
-
         @Override
-        protected void onPostExecute(List<String> titles) {
-            super.onPostExecute(titles);
-            // Cập nhật RecyclerView sau khi tải xong
-            MainActivity.this.titles.addAll(titles);
+        protected void onPostExecute(List<Pair<String, String>> titleGuidPairs) {
+            super.onPostExecute(titleGuidPairs);
+            // Sau khi tải xong, bạn có thể cập nhật RecyclerView hoặc thực hiện các thao tác khác ở đây
+            for (Pair<String, String> pair : titleGuidPairs) {
+                String title = pair.first;
+                String guid = pair.second;
+                MainActivity.this.titles.add(title);
+                MainActivity.this.guids.add(guid);
+            }
             adapter.notifyDataSetChanged();
         }
     }
+
 }
