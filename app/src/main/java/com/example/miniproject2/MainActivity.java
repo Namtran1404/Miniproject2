@@ -12,20 +12,25 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Pair;
+import android.util.Xml;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -58,7 +63,15 @@ public class MainActivity extends AppCompatActivity {
                 String url = editText.getText().toString();
                 // Nếu URL không rỗng, thực hiện tải RSS
                 if (!url.isEmpty()) {
-                    new DownloadTask().execute(url);
+                    if(titles.size()==0) {
+                        new DownloadTask().execute(url);
+                    }
+                    else{
+                        titles.clear();
+                        guids.clear();
+                        adapter.notifyDataSetChanged();
+                        new DownloadTask().execute(url);
+                    }
                 }
             }
         });
@@ -122,26 +135,108 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
+    public List<Pair<String, String>> useXMLPullParser ()
+    {
+        List<Pair<String, String>> titleGuidPairs = new ArrayList<>();
+        String title = null;
+        String guid = null;
+        boolean isItem = false;
+        try {
+            String urlLink = editText.getText().toString();
+            if(!urlLink.startsWith("http://") && !urlLink.startsWith("https://"))
+                urlLink = "http://" + urlLink;
+
+            URL url = new URL(urlLink);
+            InputStream inputStream = url.openConnection().getInputStream();
+            XmlPullParser xmlPullParser = Xml.newPullParser();
+            try {
+                xmlPullParser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
+            } catch (XmlPullParserException e) {
+                throw new RuntimeException(e);
+            }
+            xmlPullParser.setInput(inputStream, null);
+            xmlPullParser.nextTag();
+            while (xmlPullParser.next() != XmlPullParser.END_DOCUMENT) {
+                int eventType = xmlPullParser.getEventType();
+
+                String name = xmlPullParser.getName();
+                if(name == null)
+                    continue;
+
+                if(eventType == XmlPullParser.END_TAG) {
+                    if(name.equalsIgnoreCase("item")) {
+                        isItem = false;
+                    }
+                    continue;
+                }
+
+                if (eventType == XmlPullParser.START_TAG) {
+                    if(name.equalsIgnoreCase("item")) {
+                        isItem = true;
+                        continue;
+                    }
+                }
+
+                Log.d("MainActivity", "Parsing name ==> " + name);
+                String result = "";
+                if (xmlPullParser.next() == XmlPullParser.TEXT) {
+                    result = xmlPullParser.getText();
+                    xmlPullParser.nextTag();
+                }
+
+                if (name.equalsIgnoreCase("title")) {
+                    title = result;
+                } else if (name.equalsIgnoreCase("guid")) {
+                    guid = result;
+                }
+
+                if (title != null && guid != null) {
+                    if(isItem) {
+                        titleGuidPairs.add(new Pair<>(title, guid));
+                    }
+                    else {
+                    }
+
+                    title = null;
+                    guid = null;
+                    isItem = false;
+                }
+            }
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        } catch (XmlPullParserException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            Log.e("DownloadTask", "Error downloading RSS", e);
+        }
+        return titleGuidPairs;
+    }
+
+    public List<Pair<String, String>> useJsoup(String... urls)
+    {
+        List<Pair<String, String>> titleGuidPairs = new ArrayList<>();
+        try {
+            Document doc = Jsoup.connect(urls[0]).get();
+            // Trích xuất tiêu đề và guid từ các mục trong tài liệu RSS
+            Elements items = doc.select("item");
+            for (Element item : items) {
+                String title = item.select("title").first().text();
+                String guid = item.select("guid").first().text();
+                // Thêm cặp tiêu đề và guid vào danh sách
+                titleGuidPairs.add(new Pair<>(title, guid));
+            }
+        }catch (IOException e) {
+            Log.e("DownloadTask", "Error downloading RSS", e);
+        }
+        return titleGuidPairs;
+    }
     private class DownloadTask extends AsyncTask<String, Void, List<Pair<String, String>>> {
 
         @Override
         protected List<Pair<String, String>> doInBackground(String... urls) {
-            List<Pair<String, String>> titleGuidPairs = new ArrayList<>();
-            try {
-                // Kết nối tới URL và lấy HTML
-                Document doc = Jsoup.connect(urls[0]).get();
-                // Trích xuất tiêu đề và guid từ các mục trong tài liệu RSS
-                Elements items = doc.select("item");
-                for (Element item : items) {
-                    String title = item.select("title").first().text();
-                    String guid = item.select("guid").first().text();
-                    // Thêm cặp tiêu đề và guid vào danh sách
-                    titleGuidPairs.add(new Pair<>(title, guid));
-                }
-            } catch (IOException e) {
-                Log.e("DownloadTask", "Error downloading RSS", e);
-            }
-            return titleGuidPairs;
+            //hoặc sử dụng useXMLParser()
+            return useJsoup(urls);
+           // return useXMLPullParser();
         }
         @Override
         protected void onPostExecute(List<Pair<String, String>> titleGuidPairs) {
@@ -156,5 +251,4 @@ public class MainActivity extends AppCompatActivity {
             adapter.notifyDataSetChanged();
         }
     }
-
 }

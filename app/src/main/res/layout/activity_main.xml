@@ -20,17 +20,17 @@
             tools:context=".MainActivity"
             tools:ignore="MissingConstraints">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Mini project 2"
-                    android:textSize="20dp"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mini project 2"
+                android:textSize="20dp"/>
             <!-- EditText -->
-                <EditText
-                    android:id="@+id/editText"
-                    android:layout_width="300dp"
-                    android:layout_height="50dp"
-                    android:hint="Enter RSS" />
+            <EditText
+                android:id="@+id/editText"
+                android:layout_width="300dp"
+                android:layout_height="50dp"
+                android:hint="Enter RSS" />
 
             <!-- Button -->
             <Button
@@ -58,7 +58,6 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- RecyclerView -->
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>
